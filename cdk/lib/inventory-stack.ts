@@ -3,17 +3,21 @@ import * as fs from 'fs';
 import * as path from 'path';
 import {
   Aws, CfnCondition, CfnOutput, CfnParameter, Fn, Stack, StackProps,
-  aws_codebuild as codebuild, aws_iam as iam, aws_logs as logs, aws_stepfunctions as sfn,
+  CfnCustomResource, aws_codebuild as codebuild, aws_iam as iam, aws_lambda as lambda, aws_logs as logs,
+  aws_stepfunctions as sfn,
 } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 const BUILD_IMAGE = 'aws/codebuild/amazonlinux-x86_64-standard:5.0';   // has Python 3 and AWS CLI v2
 const MAX_BUILDSPEC = 25600;                                             // CodeBuild's limit for an inline buildspec
+const MAX_INLINE_CODE = 4096;                                             // CloudFormation's limit for inline Lambda code
 
 /**
  * One CodeBuild project runs collect_inventory.py unchanged and uploads the zip to S3. A one-step
  * Step Functions state machine starts the build and waits for it, so there is no Lambda timeout.
+ * A small custom resource starts the state machine when the stack is created (and again when RunId
+ * changes), so deploying the template from the console or the CLI starts the scan by itself.
  * The script is embedded in the buildspec, so the template needs no assets, no bootstrap and no Docker.
  */
 export class InventoryStack extends Stack {
@@ -23,15 +27,15 @@ export class InventoryStack extends Stack {
     // ---------------------------------------------------------------- parameters
     const bucket = new CfnParameter(this, 'InventoryBucket', {
       type: 'String',
-      description: 'S3 bucket that receives the inventory zip',
+      description: 'S3 bucket name that receives the inventory zip (required)',
       allowedPattern: '^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$',
       constraintDescription: 'must be an S3 bucket name',
     });
     const prefix = new CfnParameter(this, 'InventoryPrefix', {
       type: 'String',
-      default: 'six-pillars-inventory',
-      description: 'Key prefix (folder) for the zip in the bucket; may be empty. No leading or trailing slash.',
-      allowedPattern: "^([A-Za-z0-9!_.*'()-]+(/[A-Za-z0-9!_.*'()-]+)*)?$",
+      description: 'Folder in the bucket for the zip (required), for example six-pillars-inventory. No leading or trailing slash.',
+      allowedPattern: "^[A-Za-z0-9!_.*'()-]+(/[A-Za-z0-9!_.*'()-]+)*$",
+      minLength: 1,
       constraintDescription: 'letters, digits and !_.*\'()- separated by single slashes, with no leading or trailing slash',
     });
     const roleName = new CfnParameter(this, 'RoleName', {
@@ -53,14 +57,21 @@ export class InventoryStack extends Stack {
       maxValue: 480,
       description: 'Stop the scan if it runs longer than this',
     });
+    const runId = new CfnParameter(this, 'RunId', {
+      type: 'String',
+      default: 'first-run',
+      description: 'The scan starts when the stack is created. To run it again, update the stack with a new value here',
+    });
     this.templateOptions.metadata = {
       'AWS::CloudFormation::Interface': {
         ParameterGroups: [
           { Label: { default: 'Where to upload the inventory' }, Parameters: ['InventoryBucket', 'InventoryPrefix'] },
-          { Label: { default: 'Scan settings' }, Parameters: ['RoleName', 'CreateRole', 'ScanTimeoutMinutes'] },
+          { Label: { default: 'Scan settings' }, Parameters: ['RoleName', 'CreateRole', 'ScanTimeoutMinutes', 'RunId'] },
         ],
       },
     };
+
+    const keyStart = `${prefix.valueAsString}/`;
 
     const shouldCreateRole = new CfnCondition(this, 'ShouldCreateRole', {
       expression: Fn.conditionEquals(createRole.valueAsString, 'true'),
@@ -94,7 +105,7 @@ export class InventoryStack extends Stack {
     // The policy is attached to the role whether the stack created it or not, and is removed
     // when the stack is deleted.
     const readOnly = JSON.parse(fs.readFileSync(path.join(PROJECT_ROOT, 'iam-policy.json'), 'utf8'));
-    const objectArn = `arn:${Aws.PARTITION}:s3:::${bucket.valueAsString}/${prefix.valueAsString}*`;
+    const objectArn = `arn:${Aws.PARTITION}:s3:::${bucket.valueAsString}/${keyStart}*`;
     const policy = new iam.CfnPolicy(this, 'ScanPolicy', {
       policyName: `${Aws.STACK_NAME}-scan`,
       roles: [roleRef],
@@ -130,7 +141,7 @@ export class InventoryStack extends Stack {
       'python3 collect_inventory.py --yes --output /tmp/scanner/outputs 2>&1 | tee /tmp/scan.log',
       "ZIP=$(sed -n 's/^RETURN_THIS_ZIP=//p' /tmp/scan.log | tail -n 1)",
       '[ -n "$ZIP" ] && [ -f "$ZIP" ] || { echo "The scan did not produce a zip"; exit 1; }',
-      'KEY="${INVENTORY_PREFIX:+$INVENTORY_PREFIX/}$(basename "$ZIP")"',
+      'KEY="$INVENTORY_PREFIX/$(basename "$ZIP")"',
       'aws s3 cp "$ZIP" "s3://$INVENTORY_BUCKET/$KEY" --acl bucket-owner-full-control --no-progress',
       'export INVENTORY_S3_URI="s3://$INVENTORY_BUCKET/$KEY"',
       'echo "INVENTORY_S3_URI=$INVENTORY_S3_URI"',
@@ -205,6 +216,9 @@ export class InventoryStack extends Stack {
           Type: 'Task',
           Resource: 'arn:aws:states:::codebuild:startBuild.sync',
           Parameters: { ProjectName: '${ProjectName}' },
+          // A role created moments earlier can take a few seconds to become usable.
+          Retry: [{ ErrorEquals: ['States.Permissions', 'CodeBuild.AccessDeniedException'],
+                    IntervalSeconds: 15, MaxAttempts: 3, BackoffRate: 2 }],
           End: true,
         },
       },
@@ -216,12 +230,57 @@ export class InventoryStack extends Stack {
       definitionSubstitutions: { ProjectName: project.ref },
     });
 
+    // ---------------------------------------------------------------- start the scan
+    const executionArns = `arn:${Aws.PARTITION}:states:${Aws.REGION}:${Aws.ACCOUNT_ID}:execution:${Aws.STACK_NAME}:*`;
+    const starterRole = new iam.CfnRole(this, 'StarterRole', {
+      description: 'Lets the 6pillars.ai inventory stack start the scan when it is created, and stop it when deleted',
+      assumeRolePolicyDocument: {
+        Version: '2012-10-17',
+        Statement: [{ Effect: 'Allow', Principal: { Service: 'lambda.amazonaws.com' }, Action: 'sts:AssumeRole' }],
+      },
+      policies: [{
+        policyName: 'start-scan',
+        policyDocument: {
+          Version: '2012-10-17',
+          Statement: [
+            { Effect: 'Allow', Action: ['states:StartExecution', 'states:ListExecutions'], Resource: machine.attrArn },
+            { Effect: 'Allow', Action: 'states:StopExecution', Resource: executionArns },
+            { Effect: 'Allow', Action: ['logs:CreateLogStream', 'logs:PutLogEvents'], Resource: logGroup.attrArn },
+          ],
+        },
+      }],
+    });
+    const starterCode = fs.readFileSync(path.join(__dirname, '..', 'lambda', 'start_scan.py'), 'utf8');
+    if (starterCode.length > MAX_INLINE_CODE) {
+      throw new Error(`lambda/start_scan.py is ${starterCode.length} characters; inline Lambda code allows ${MAX_INLINE_CODE}.`);
+    }
+    const starter = new lambda.CfnFunction(this, 'StarterFunction', {
+      description: 'Starts the 6pillars.ai inventory scan when the stack is created',
+      runtime: 'python3.12',
+      handler: 'index.handler',
+      role: starterRole.attrArn,
+      timeout: 60,
+      code: { zipFile: starterCode },
+      // Writes to the scan's log group, so nothing is left behind when the stack is deleted.
+      loggingConfig: { logGroup: logGroup.ref, logFormat: 'Text' },
+    });
+    const startScan = new CfnCustomResource(this, 'StartScan', { serviceToken: starter.attrArn });
+    startScan.addPropertyOverride('StateMachineArn', machine.attrArn);
+    startScan.addPropertyOverride('RunId', runId.valueAsString);
+    // Everything the scan uses must exist before it starts, and still exist while a delete stops it.
+    startScan.addResourceDependency(project);
+    startScan.addResourceDependency(policy);
+
     // ---------------------------------------------------------------- outputs
     new CfnOutput(this, 'StateMachineArn', { value: machine.attrArn });
+    new CfnOutput(this, 'StartedExecutionArn', {
+      description: 'The scan started by the latest create or RunId change',
+      value: startScan.getAtt('ExecutionArn').toString(),
+    });
     new CfnOutput(this, 'ProjectName', { value: project.ref });
     new CfnOutput(this, 'LogGroupName', { value: logGroup.ref });
     new CfnOutput(this, 'InventoryLocation', {
-      value: Fn.join('', ['s3://', bucket.valueAsString, '/', prefix.valueAsString]),
+      value: Fn.join('', ['s3://', bucket.valueAsString, '/', keyStart]),
     });
     new CfnOutput(this, 'ScanRoleName', { value: roleName.valueAsString });
   }

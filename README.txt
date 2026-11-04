@@ -35,8 +35,10 @@ What the CloudFormation stack (option A) creates
     permission to write its log and to upload the zip to the S3 location you give. If a role with that
     name already exists, it is used instead, and the stack only adds (then removes) its permissions.
   - A CodeBuild project that runs this script, unchanged, and uploads the zip.
-  - A Step Functions state machine that starts the scan and waits for it to finish, plus a small role
+  - A Step Functions state machine that runs the scan and waits for it to finish, plus a small role
     that lets it do so.
+  - A small Lambda function, and its role, that starts the scan as soon as the stack is created (and
+    stops it if the stack is deleted while it is still running).
   - A CloudWatch log group with the scan's progress messages (kept 14 days).
   The zip stays in the S3 bucket after the stack is deleted.
 
@@ -45,10 +47,11 @@ What the CloudFormation stack (option A) creates
 ----------------
 Option A (CloudFormation stack, in AWS CloudShell)
   - Signed in to the AWS Console for the account to be read, with permission to create IAM roles,
-    CodeBuild projects, Step Functions state machines and CloudWatch log groups through CloudFormation
+    CodeBuild projects, Step Functions state machines, Lambda functions and CloudWatch log groups
+    through CloudFormation
     (for example the AWS managed policy AdministratorAccess).
-  - An S3 location to upload the zip to, for example  s3://example-bucket/six-pillars-inventory
-    (we will give you one, or you can use a bucket of your own).
+  - The name of an S3 bucket to upload the zip to, for example  example-bucket  (we will give you
+    one, or you can use a bucket of your own). You also give the folder in the bucket for the zip, for example  six-pillars-inventory.
 
 Option B (run the script yourself)
   - Python 3.9 or later (no extra packages). AWS CloudShell already has it.
@@ -64,11 +67,13 @@ Option B (run the script yourself)
 Option A, in AWS CloudShell (pick the Region to scan in the Console first):
 
     git clone https://github.com/5pillars/six-pillar-architecture-diagram-maker.git && cd six-pillar-architecture-diagram-maker
-    ./deploy.sh --bucket example-bucket      starts the scan (type y to confirm)
-    ./status.sh --watch                      waits until it finishes, then offers to delete the stack
+    ./deploy.sh --region ap-southeast-2 --bucket example-bucket --prefix six-pillars-inventory
+                                     starts the scan (type y to confirm); all three are required
+    ./status.sh --region ap-southeast-2 --watch
+                                     waits until it finishes, then offers to delete the stack
 
-That's it. ./destroy.sh deletes the stack later if you didn't then. HOW-TO-RUN.txt has the details and
-the other options (--region, --prefix, --role, --stack).
+That's it. ./destroy.sh --region ap-southeast-2 deletes the stack later if you didn't then. HOW-TO-RUN.txt has the details and
+the other options (--role, --stack).
 
 Option B, in a terminal in this folder:
 
