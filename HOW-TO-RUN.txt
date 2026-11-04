@@ -27,7 +27,7 @@ QUICK STEPS
 
   2. Copy and paste this, then press Enter:
 
-         git clone REPOSITORY_URL six-pillars-inventory && cd six-pillars-inventory
+         git clone https://github.com/5pillars/sixpillar-diagram-inventory.git && cd sixpillar-diagram-inventory
 
   3. Start the scan (put in the bucket name we gave you), then type  y  when asked:
 
@@ -55,7 +55,7 @@ Step 1. Open CloudShell
     and  ./status.sh --region ap-south-2 --watch ).
 
 Step 2. Get the files
-  The git clone command downloads the files into a folder called six-pillars-inventory and moves you
+  The git clone command downloads the files into a folder called sixpillar-diagram-inventory and moves you
   into it. If we sent you a zip instead: click "Actions", then "Upload file", choose the zip, then type
       unzip 6pillars-inventory-script-noroles-nocost.zip && cd 6pillars-inventory-script-noroles-nocost
 
@@ -72,7 +72,7 @@ Step 4. Wait for it to finish
   - ./status.sh --watch  checks every 30 seconds and shows how long the scan has been running. Without
     --watch, it checks once.
   - If you closed CloudShell, open it again in the same Region and type
-        cd six-pillars-inventory && ./status.sh --watch
+        cd sixpillar-diagram-inventory && ./status.sh --watch
   - When it finishes, it shows where the zip was uploaded, for example:
         INVENTORY_S3_URI=s3://example-bucket/AWS-inventory-111122223333-ap-southeast-2-20261028T094112123456Z.zip
     and asks:  Delete the stack now? The inventory zip stays in S3. [y/N]
@@ -125,7 +125,7 @@ Step 5. Download the zip
   When it finishes, the last line starts with  RETURN_THIS_ZIP=  followed by the zip's full path,
   for example:
 
-      RETURN_THIS_ZIP=/home/cloudshell-user/six-pillars-inventory/outputs/111122223333/AWS-inventory-111122223333-ap-southeast-2-20261028T094112123456Z.zip
+      RETURN_THIS_ZIP=/home/cloudshell-user/sixpillar-diagram-inventory/outputs/111122223333/AWS-inventory-111122223333-ap-southeast-2-20261028T094112123456Z.zip
 
   - Select and copy the path (everything after the = sign).
   - Click "Actions", then "Download file".
@@ -142,7 +142,7 @@ TIDY UP CLOUDSHELL (OPTIONAL, OPTIONS A AND B)
   For Option A, delete the stack first (./destroy.sh). Then, to remove the files from CloudShell, type:
 
       cd ~
-      rm -rf six-pillars-inventory
+      rm -rf sixpillar-diagram-inventory
 
 
 OPTION C: YOUR OWN COMPUTER
@@ -153,8 +153,9 @@ OPTION C: YOUR OWN COMPUTER
        aws login                 (signs the CLI in with your Console sign-in, through your browser)
        aws configure sso         (IAM Identity Center / single sign-on), then  aws sso login
   3. Check the account:  aws sts get-caller-identity
-  4. Get the files (git clone REPOSITORY_URL, or unzip the zip we sent), open a terminal in that folder
-     and run:
+  4. Get the files, or unzip the zip we sent:
+       git clone https://github.com/5pillars/sixpillar-diagram-inventory.git
+     Open a terminal in that folder and run:
        python collect_inventory.py --region REGION     (Windows)
        python3 collect_inventory.py --region REGION    (macOS and Linux)
      If you signed in with a named profile, add  --profile YOUR_PROFILE
@@ -190,7 +191,7 @@ Options B and C
     open it again), then run the script again.
   - "Inventory failed: ...": send us the message shown. Nothing in your account has been changed.
   - CloudShell closed or the session ended before the script finished: open CloudShell again, then
-    cd six-pillars-inventory and run Option B Step 4 again. Click in the window every few minutes
+    cd sixpillar-diagram-inventory and run Option B Step 4 again. Click in the window every few minutes
     while it runs.
 
 All options

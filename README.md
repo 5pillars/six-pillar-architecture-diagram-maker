@@ -13,7 +13,7 @@ S3 location you choose. It runs entirely from AWS CloudShell, so there's nothing
 1. In the AWS Console, pick the Region to scan, then open **CloudShell** (the `>_` icon in the top bar).
 2. Get the files:
    ```bash
-   git clone REPOSITORY_URL six-pillars-inventory && cd six-pillars-inventory
+   git clone https://github.com/5pillars/sixpillar-diagram-inventory.git && cd sixpillar-diagram-inventory
    ```
 3. Start the scan, then type `y` to confirm:
    ```bash
@@ -30,7 +30,7 @@ S3 location you choose. It runs entirely from AWS CloudShell, so there's nothing
    ```
 
 The scan runs in AWS, not in CloudShell, so CloudShell can close while it runs. To check again, open
-CloudShell in the same Region and run `cd six-pillars-inventory && ./status.sh --watch`. Run `./destroy.sh`
+CloudShell in the same Region and run `cd sixpillar-diagram-inventory && ./status.sh --watch`. Run `./destroy.sh`
 to delete the stack later.
 
 To scan a different Region from CloudShell's, add `--region ap-southeast-2` to all three commands. To put
