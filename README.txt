@@ -63,7 +63,7 @@ Option B (run the script yourself)
 ---------
 Option A, in AWS CloudShell (pick the Region to scan in the Console first):
 
-    git clone https://github.com/5pillars/sixpillar-diagram-inventory.git && cd sixpillar-diagram-inventory
+    git clone https://github.com/5pillars/six-pillar-architecture-diagram-maker.git && cd six-pillar-architecture-diagram-maker
     ./deploy.sh --bucket example-bucket      starts the scan (type y to confirm)
     ./status.sh --watch                      waits until it finishes, then offers to delete the stack
 

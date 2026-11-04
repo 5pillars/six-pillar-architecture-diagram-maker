@@ -13,7 +13,7 @@ S3 location you choose. It runs entirely from AWS CloudShell, so there's nothing
 1. In the AWS Console, pick the Region to scan, then open **CloudShell** (the `>_` icon in the top bar).
 2. Get the files:
    ```bash
-   git clone https://github.com/5pillars/sixpillar-diagram-inventory.git && cd sixpillar-diagram-inventory
+   git clone https://github.com/5pillars/six-pillar-architecture-diagram-maker.git && cd six-pillar-architecture-diagram-maker
    ```
 3. Start the scan, then type `y` to confirm:
    ```bash
@@ -30,7 +30,7 @@ S3 location you choose. It runs entirely from AWS CloudShell, so there's nothing
    ```
 
 The scan runs in AWS, not in CloudShell, so CloudShell can close while it runs. To check again, open
-CloudShell in the same Region and run `cd sixpillar-diagram-inventory && ./status.sh --watch`. Run `./destroy.sh`
+CloudShell in the same Region and run `cd six-pillar-architecture-diagram-maker && ./status.sh --watch`. Run `./destroy.sh`
 to delete the stack later.
 
 To scan a different Region from CloudShell's, add `--region ap-southeast-2` to all three commands. To put
@@ -109,6 +109,23 @@ npm run build-template   # writes ../cloudformation/six-pillars-inventory.templa
 
 The build fails if the embedded script grows past CodeBuild's 25,600-character inline buildspec limit
 (currently about 19,000 characters).
+
+### Publishing the template
+
+`cdk/scripts/publish-template.sh` uploads the template to an environment's template bucket. Give the
+environment as the first argument:
+
+| Environment | Destination                                                                               |
+|-------------|-------------------------------------------------------------------------------------------|
+| `uat`       | `s3://uat-six-pillars-user-role-templates/templates/six-pillars-inventory.template.json`  |
+| `prod`      | `s3://prod-six-pillars-user-role-templates/templates/six-pillars-inventory.template.json` |
+
+```bash
+cdk/scripts/publish-template.sh uat --profile uat-profile     # add --build to rebuild first, -y to skip the prompt
+cdk/scripts/publish-template.sh prod --profile prod-profile
+```
+
+It shows the account you're signed in to and the destination, and asks before uploading.
 
 ## Running the script without the stack
 

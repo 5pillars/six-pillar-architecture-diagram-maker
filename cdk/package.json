@@ -5,7 +5,8 @@
   "description": "CDK app that builds the CloudFormation template for the 6pillars.ai inventory scan",
   "scripts": {
     "synth": "cdk synth --quiet",
-    "build-template": "cdk synth --quiet && node scripts/copy-template.js"
+    "build-template": "cdk synth --quiet && node scripts/copy-template.js",
+    "publish-template": "scripts/publish-template.sh"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
