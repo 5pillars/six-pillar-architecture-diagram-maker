@@ -10,51 +10,59 @@ S3 location you choose. It runs entirely from AWS CloudShell, so there's nothing
 
 ## Quick start (AWS CloudShell)
 
-Open CloudShell in the Region to scan, then:
+1. In the AWS Console, pick the Region to scan, then open **CloudShell** (the `>_` icon in the top bar).
+2. Get the files:
+   ```bash
+   git clone REPOSITORY_URL six-pillars-inventory && cd six-pillars-inventory
+   ```
+3. Start the scan, then type `y` to confirm:
+   ```bash
+   ./deploy.sh --bucket example-bucket
+   ```
+4. Wait for it to finish (5–10 minutes):
+   ```bash
+   ./status.sh --watch
+   ```
+   When it shows `SUCCEEDED`, type `y` to delete the stack. The zip stays in S3:
+   ```
+   INVENTORY_S3_URI=s3://example-bucket/AWS-inventory-123456789012-ap-southeast-2-20261104T101500Z.zip
+   Delete the stack now? The inventory zip stays in S3. [y/N]
+   ```
 
-```bash
-git clone REPOSITORY_URL six-pillars-inventory
-cd six-pillars-inventory
+The scan runs in AWS, not in CloudShell, so CloudShell can close while it runs. To check again, open
+CloudShell in the same Region and run `cd six-pillars-inventory && ./status.sh --watch`. Run `./destroy.sh`
+to delete the stack later.
 
-export S3_UPLOAD_URL=s3://example-bucket/six-pillars-inventory   # where the zip goes
-
-./deploy.sh      # 1. deploys the stack and starts the scan
-./status.sh      # 2. is it still running? (./status.sh --watch waits until it finishes)
-```
-
-When the scan finishes, `status.sh` prints the upload location and offers to delete the stack:
-
-```
-SUCCEEDED in 7m12s.
-
-INVENTORY_S3_URI=s3://example-bucket/six-pillars-inventory/AWS-inventory-123456789012-ap-southeast-2-20261104T101500Z.zip
-Delete the stack now? The inventory zip stays in S3. [y/N]
-```
-
-`./destroy.sh` deletes the stack at any time. The zip stays in the bucket.
-
-The scan runs in AWS, not in CloudShell, so CloudShell can close while it runs. Open CloudShell again in the
-same Region, `cd six-pillars-inventory` and run `./status.sh`.
+To scan a different Region from CloudShell's, add `--region ap-southeast-2` to all three commands. To put
+the zip in a folder, add `--prefix FOLDER`, or use `--bucket s3://example-bucket/FOLDER`.
 
 ### Commands
 
-| Command                   | What it does                                                                |
-|---------------------------|-----------------------------------------------------------------------------|
-| `./deploy.sh [-y]`        | Shows account, Region, upload location and role; deploys; starts the scan   |
-| `./status.sh [--watch]`   | RUNNING / SUCCEEDED / FAILED, recent log lines, the zip's S3 URI when done  |
-| `./destroy.sh [-y]`       | Stops a running scan, if any, and deletes the stack                         |
+| Command        | What it does                                                                 |
+|----------------|------------------------------------------------------------------------------|
+| `./deploy.sh`  | Shows account, Region, upload location and role; deploys; starts the scan    |
+| `./status.sh`  | RUNNING / SUCCEEDED / FAILED, recent log lines, the zip's S3 URI when done   |
+| `./destroy.sh` | Stops a running scan, if any, and deletes the stack                          |
+
+Each one prints `--help`. Their hints repeat whatever `--region` and `--stack` you used, so you can copy
+them as they are.
 
 `status.sh` exits with 0 when the scan has succeeded, 1 when it failed or no scan exists, and 2 while it
 is still running, so you can use it in scripts.
 
-### Settings (environment variables)
+### Options
 
-| Variable        | Default                   | Meaning                                    |
-|-----------------|---------------------------|--------------------------------------------|
-| `S3_UPLOAD_URL` | (required)                | `s3://bucket` or `s3://bucket/prefix`      |
-| `ROLE_NAME`     | `six-pillar-diagram-role` | IAM role the scan runs as                  |
-| `STACK_NAME`    | `six-pillars-inventory`   | CloudFormation stack name                  |
-| `AWS_REGION`    | CloudShell's Region       | Region to deploy into and scan             |
+An option overrides its environment variable, so either one works.
+
+| Option            | Environment variable | Used by   | Default                   | Meaning                                       |
+|-------------------|----------------------|-----------|---------------------------|-----------------------------------------------|
+| `--region REGION` | `AWS_REGION`         | all three | CloudShell's Region       | Region to deploy into and scan                |
+| `--bucket BUCKET` | `S3_UPLOAD_URL`      | deploy    | (required)                | `bucket`, or `s3://bucket/prefix`             |
+| `--prefix PREFIX` |                      | deploy    | path in `--bucket`, or none | Folder in the bucket                     |
+| `--role NAME`     | `ROLE_NAME`          | deploy    | `six-pillar-diagram-role` | IAM role the scan runs as                     |
+| `--stack NAME`    | `STACK_NAME`         | all three | `six-pillars-inventory`   | CloudFormation stack name                     |
+| `--watch`         |                      | status    |                           | Check every 30 seconds until the scan is done |
+| `-y`, `--yes`     |                      | deploy, destroy |                     | Don't ask to confirm                          |
 
 ## What gets created
 

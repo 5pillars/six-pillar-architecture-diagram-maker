@@ -61,14 +61,14 @@ Option B (run the script yourself)
 
 2. RUN IT
 ---------
-Option A, in AWS CloudShell, in the Region to scan:
+Option A, in AWS CloudShell (pick the Region to scan in the Console first):
 
-    git clone REPOSITORY_URL six-pillars-inventory
-    cd six-pillars-inventory
-    export S3_UPLOAD_URL=s3://example-bucket/six-pillars-inventory
-    ./deploy.sh          deploys the stack and starts the scan (asks you to confirm first)
-    ./status.sh          shows whether the scan is still running (./status.sh --watch waits for it)
-    ./destroy.sh         deletes the stack (status.sh also offers to do this when the scan finishes)
+    git clone REPOSITORY_URL six-pillars-inventory && cd six-pillars-inventory
+    ./deploy.sh --bucket example-bucket      starts the scan (type y to confirm)
+    ./status.sh --watch                      waits until it finishes, then offers to delete the stack
+
+That's it. ./destroy.sh deletes the stack later if you didn't then. HOW-TO-RUN.txt has the details and
+the other options (--region, --prefix, --role, --stack).
 
 Option B, in a terminal in this folder:
 

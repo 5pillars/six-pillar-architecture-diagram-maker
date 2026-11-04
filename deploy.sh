@@ -1,37 +1,74 @@
 #!/usr/bin/env bash
 # Command 1: deploy the inventory stack and start the scan.
 #
-#   export S3_UPLOAD_URL=s3://your-bucket/optional/prefix
-#   ./deploy.sh            # add -y to skip the confirmation
+#   ./deploy.sh --region ap-southeast-2 --bucket my-bucket [--prefix six-pillars-inventory]
 #
-# Optional: STACK_NAME (default six-pillars-inventory), ROLE_NAME (default six-pillar-diagram-role).
-# The Region is the one CloudShell is in (AWS_REGION), or set AWS_REGION yourself.
+# or with environment variables:
+#
+#   export S3_UPLOAD_URL=s3://my-bucket/optional/prefix
+#   ./deploy.sh
+#
+# Options (each overrides the matching environment variable):
+#   --region REGION   Region to deploy into and scan (AWS_REGION; default: CloudShell's Region)
+#   --bucket BUCKET   S3 bucket for the zip; s3://bucket/prefix also works (S3_UPLOAD_URL)
+#   --prefix PREFIX   Folder in the bucket (default: none, or the path in --bucket / S3_UPLOAD_URL)
+#   --role NAME       IAM role the scan runs as (ROLE_NAME; default six-pillar-diagram-role)
+#   --stack NAME      CloudFormation stack name (STACK_NAME; default six-pillars-inventory)
+#   -y, --yes         Do not ask to confirm
 set -euo pipefail
 cd "$(dirname "$0")"
 
+die() { echo "ERROR: $*" >&2; exit 1; }
+usage() { sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+
 STACK_NAME="${STACK_NAME:-six-pillars-inventory}"
 ROLE_NAME="${ROLE_NAME:-six-pillar-diagram-role}"
-TEMPLATE="cloudformation/six-pillars-inventory.template.json"
+REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-}}"
+URL="${S3_UPLOAD_URL:-}"
+PREFIX_ARG=""
+PREFIX_SET=false
 ASSUME_YES=false
-[ "${1:-}" = "-y" ] || [ "${1:-}" = "--yes" ] && ASSUME_YES=true
+TEMPLATE="cloudformation/six-pillars-inventory.template.json"
 
-die() { echo "ERROR: $*" >&2; exit 1; }
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --region)  [ $# -ge 2 ] || die "--region needs a value"; REGION="$2"; shift 2 ;;
+    --bucket)  [ $# -ge 2 ] || die "--bucket needs a value"; URL="$2"; shift 2 ;;
+    --prefix)  [ $# -ge 2 ] || die "--prefix needs a value"; PREFIX_ARG="$2"; PREFIX_SET=true; shift 2 ;;
+    --role)    [ $# -ge 2 ] || die "--role needs a value"; ROLE_NAME="$2"; shift 2 ;;
+    --stack)   [ $# -ge 2 ] || die "--stack needs a value"; STACK_NAME="$2"; shift 2 ;;
+    --region=*) REGION="${1#*=}"; shift ;;
+    --bucket=*) URL="${1#*=}"; shift ;;
+    --prefix=*) PREFIX_ARG="${1#*=}"; PREFIX_SET=true; shift ;;
+    --role=*)   ROLE_NAME="${1#*=}"; shift ;;
+    --stack=*)  STACK_NAME="${1#*=}"; shift ;;
+    -y|--yes)  ASSUME_YES=true; shift ;;
+    -h|--help) usage 0 ;;
+    *) echo "Unknown option: $1" >&2; usage 1 ;;
+  esac
+done
+
+# Options the follow-up commands need, so the hints we print can be copied as they are.
+ARGS=""
+[ "$REGION" != "${AWS_REGION:-}" ] && ARGS+=" --region $REGION"
+[ "$STACK_NAME" != six-pillars-inventory ] && ARGS+=" --stack $STACK_NAME"
 
 export AWS_PAGER=""
-REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-}}"
-[ -n "$REGION" ] || die "No Region set. Run in CloudShell, or: export AWS_REGION=ap-southeast-2"
-export AWS_REGION="$REGION"
+[ -n "$REGION" ] || die "No Region set. Run in CloudShell, or add: --region ap-southeast-2"
+[[ "$REGION" =~ ^[a-z]{2}(-[a-z]+)+-[0-9]$ ]] || die "Not an AWS Region name: '$REGION'"
+export AWS_REGION="$REGION" AWS_DEFAULT_REGION="$REGION"
 
-# ---- where to upload: s3://bucket/prefix (or bucket/prefix)
-URL="${S3_UPLOAD_URL:-}"
-[ -n "$URL" ] || die "Set the upload location first, for example: export S3_UPLOAD_URL=s3://my-bucket/six-pillars-inventory"
+# ---- where to upload: bucket, bucket/prefix or s3://bucket/prefix
+[ -n "$URL" ] || die "Say where to upload the zip, for example: --bucket my-bucket  (or export S3_UPLOAD_URL=s3://my-bucket/prefix)"
 URL="${URL#s3://}"
 URL="${URL#/}"
 BUCKET="${URL%%/*}"
 PREFIX=""
 [[ "$URL" == */* ]] && PREFIX="${URL#*/}"
+$PREFIX_SET && PREFIX="$PREFIX_ARG"
+while [[ "$PREFIX" == /* ]]; do PREFIX="${PREFIX#/}"; done
 while [[ "$PREFIX" == */ ]]; do PREFIX="${PREFIX%/}"; done
-[[ "$BUCKET" =~ ^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$ ]] || die "Not an S3 bucket name: '$BUCKET' (from S3_UPLOAD_URL)"
+[[ "$BUCKET" =~ ^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$ ]] || die "Not an S3 bucket name: '$BUCKET'"
 
 # ---- who and where
 IDENTITY=$(aws sts get-caller-identity --query '[Account,Arn]' --output text) || die "Not signed in to AWS."
@@ -57,7 +94,7 @@ if [ "$STATUS" != NONE ] && [ "$STATUS" != ROLLBACK_COMPLETE ]; then
   if [ -n "$MACHINE" ] && [ "$MACHINE" != None ]; then
     RUNNING=$(aws stepfunctions list-executions --state-machine-arn "$MACHINE" --status-filter RUNNING \
       --query 'length(executions)' --output text 2>/dev/null || echo 0)
-    [ "$RUNNING" = 0 ] || die "A scan is already running. Check it with ./status.sh"
+    [ "$RUNNING" = 0 ] || die "A scan is already running. Check it with ./status.sh$ARGS"
   fi
 fi
 
@@ -70,7 +107,7 @@ else
   if ROLE_ERR=$(aws iam get-role --role-name "$ROLE_NAME" --query 'Role.AssumeRolePolicyDocument' --output json 2>&1); then
     CREATE_ROLE=false
     echo "$ROLE_ERR" | grep -q 'codebuild.amazonaws.com' || die "Role $ROLE_NAME exists but CodeBuild cannot use it.
-Add codebuild.amazonaws.com to its trust policy, or use a different name: export ROLE_NAME=another-name"
+Add codebuild.amazonaws.com to its trust policy, or use a different name: --role another-name"
   elif echo "$ROLE_ERR" | grep -q NoSuchEntity; then
     CREATE_ROLE=true
   else
@@ -120,4 +157,4 @@ echo
 echo "Scan started. It usually takes 5-10 minutes."
 echo "  Execution: $EXECUTION"
 echo
-echo "Check on it with:   ./status.sh          (or ./status.sh --watch to wait until it finishes)"
+echo "Check on it with:   ./status.sh$ARGS          (or ./status.sh$ARGS --watch to wait until it finishes)"

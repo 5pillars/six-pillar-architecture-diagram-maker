@@ -2,8 +2,11 @@
 # Command 2: is the scan still running? When it has finished, shows where the zip was uploaded
 # and offers to delete the stack.
 #
-#   ./status.sh            # check once
-#   ./status.sh --watch    # check every 30 seconds until the scan finishes
+#   ./status.sh                          # check once
+#   ./status.sh --watch                  # check every 30 seconds until the scan finishes
+#   ./status.sh --region ap-southeast-2  # if you deployed with --region
+#
+# Options: --region REGION, --stack NAME (as given to deploy.sh), -w/--watch
 #
 # Exit code: 0 finished OK, 1 failed or no scan, 2 still running.
 set -euo pipefail
@@ -11,7 +14,19 @@ cd "$(dirname "$0")"
 
 STACK_NAME="${STACK_NAME:-six-pillars-inventory}"
 WATCH=false
-[ "${1:-}" = "--watch" ] || [ "${1:-}" = "-w" ] && WATCH=true
+PASS=()   # options handed on to destroy.sh and shown in hints
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --region) [ $# -ge 2 ] || { echo "--region needs a value" >&2; exit 1; }
+              export AWS_REGION="$2" AWS_DEFAULT_REGION="$2"; PASS+=(--region "$2"); shift 2 ;;
+    --stack)  [ $# -ge 2 ] || { echo "--stack needs a value" >&2; exit 1; }
+              STACK_NAME="$2"; PASS+=(--stack "$2"); shift 2 ;;
+    -w|--watch) WATCH=true; shift ;;
+    -h|--help) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) echo "Unknown option: $1 (try --help)" >&2; exit 1 ;;
+  esac
+done
+ARGS="${PASS[*]:+ ${PASS[*]}}"
 export AWS_PAGER=""
 
 output() {
@@ -20,7 +35,7 @@ output() {
 }
 
 if ! MACHINE=$(output StateMachineArn 2>/dev/null) || [ -z "$MACHINE" ] || [ "$MACHINE" = None ]; then
-  echo "Stack $STACK_NAME is not deployed in ${AWS_REGION:-this Region}. Start with ./deploy.sh"
+  echo "Stack $STACK_NAME is not deployed in ${AWS_REGION:-this Region}. Start with ./deploy.sh (or add --region where you deployed it)"
   exit 1
 fi
 LOG_GROUP=$(output LogGroupName)
@@ -30,10 +45,10 @@ offer_destroy() {
   if [ -t 0 ]; then
     read -r -p "Delete the stack now? The inventory zip stays in S3. [y/N] " answer
     if [[ "$answer" =~ ^[Yy]([Ee][Ss])?$ ]]; then
-      exec ./destroy.sh --yes
+      exec ./destroy.sh --yes ${PASS[@]+"${PASS[@]}"}
     fi
   fi
-  echo "Delete the stack later with:   ./destroy.sh"
+  echo "Delete the stack later with:   ./destroy.sh$ARGS"
 }
 
 while true; do
@@ -65,7 +80,7 @@ print(d["status"], f"{m}m{s:02d}s")
       echo "$(date -u +%H:%M:%S) RUNNING for $ELAPSED. Latest scan output:"
       aws logs tail "$LOG_GROUP" --since 30m --format short 2>/dev/null | tail -n 3 | sed 's/^/    /' || true
       if $WATCH; then sleep 30; continue; fi
-      echo "Still running. Run ./status.sh again in a minute, or ./status.sh --watch"
+      echo "Still running. Run ./status.sh$ARGS again in a minute, or ./status.sh$ARGS --watch"
       exit 2
       ;;
     SUCCEEDED)
@@ -101,7 +116,7 @@ if d.get("cause"): print("  Cause:", d["cause"][:600])
       echo "Last lines of the scan log:"
       aws logs tail "$LOG_GROUP" --since 1d --format short 2>/dev/null | tail -n 15 | sed 's/^/    /' || true
       echo
-      echo "Fix the problem and run ./deploy.sh again, or remove everything with ./destroy.sh"
+      echo "Fix the problem and run ./deploy.sh again, or remove everything with ./destroy.sh$ARGS"
       offer_destroy
       exit 1
       ;;
