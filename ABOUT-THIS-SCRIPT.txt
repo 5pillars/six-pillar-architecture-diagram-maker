@@ -1,0 +1,66 @@
+ABOUT THE 6PILLARS.AI INVENTORY SCRIPT
+======================================
+
+WHAT IT DOES
+------------
+The 6pillars.ai Inventory Script (collect_inventory.py) makes a list of the AWS resources in your account (an inventory), so we can document
+your architecture. It:
+
+  1. Shows which AWS account and identity you are signed in as, and asks you to confirm.
+  2. Lists the resources in that account in one AWS Region that you choose: for example servers,
+     databases, functions, networks, queues and APIs, with their names, sizes, settings and how they
+     connect to each other.
+  3. Also lists a few account-wide services that have no Region, because they connect to that Region's
+     resources: CloudFront, Route 53 and Global Accelerator.
+  4. Saves the result in a zip file on your computer. Nothing is sent anywhere: you choose whether to send
+     us the zip.
+
+You can read the script and every file it uses before running it. It is plain Python with no extra
+packages, and every request goes through the standard AWS CLI.
+
+
+IT IS READ-ONLY
+---------------
+  - It only uses AWS "List", "Describe" and "Get" requests. It cannot create, change, start, stop or
+    delete anything, and the permissions below don't allow it to.
+  - It does NOT read:
+      - secret values (Secrets Manager, Parameter Store) or passwords, keys or tokens of any kind;
+      - Lambda environment variables or code;
+      - the contents of S3 buckets, databases, queues, logs or file systems;
+      - any cost data: no bills, budgets or prices;
+      - IAM: no roles, role policies, trust policies or instance profiles. The script needs no IAM
+        permissions at all.
+  - It stops if the signed-in account changes during the run, so only one account is ever read.
+  - It runs on your computer with your own sign-in. We get no access to your account.
+
+
+PERMISSIONS IT NEEDS
+--------------------
+Read-only permissions only, all listed in iam-policy.json (71 actions). The AWS managed policy
+ReadOnlyAccess also covers them. They fall into these groups:
+
+  Account           ec2:DescribeRegions, tag:GetResources, resource-explorer-2:ListIndexes/Search
+  Compute           EC2 instances, volumes and snapshots; Lambda functions; ECS, EKS, ECR, App Runner,
+                    SageMaker endpoints (list and describe)
+  Integration       API Gateway, AppSync, Step Functions, EventBridge, SNS, SQS, SES (list and describe)
+  Storage and data  S3 bucket names and Regions, DynamoDB tables, RDS, ElastiCache, EFS, Redshift,
+                    OpenSearch (list and describe)
+  Network           VPCs, subnets, route tables, gateways, security groups, endpoints, load balancers,
+                    Client VPN, CloudFront, Route 53, Global Accelerator, WAF (list and describe)
+  Operations        CloudFormation stacks, CloudWatch alarms and log groups, CloudTrail, Config,
+                    CodeBuild, CodePipeline, Resilience Hub (list and describe)
+  Security          GuardDuty, Security Hub, Macie, KMS keys and aliases, Secrets Manager secret
+                    names (list only; not values)
+
+The optional "Deny" statement in iam-policy.json also blocks reading API Gateway API keys.
+
+
+WHAT YOU SEND US
+----------------
+One zip file containing:
+  snapshot.json         the inventory
+  scan-errors.json      any requests that failed (for example a missing permission)
+  manifest.sha256.json  checksums of the two files above
+
+SAMPLE-DATA.txt shows the kind of information in the inventory and which parts of it may be sensitive.
+HOW-TO-RUN.txt and README.txt explain how to run the script.

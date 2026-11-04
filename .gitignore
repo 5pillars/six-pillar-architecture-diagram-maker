@@ -1,0 +1,5 @@
+outputs/
+__pycache__/
+cdk/node_modules/
+cdk/cdk.out/
+.DS_Store

@@ -1,0 +1,201 @@
+6PILLARS.AI INVENTORY SCRIPT: HOW TO RUN IT
+===========================================
+
+These steps start after you have signed in to the AWS Management Console for the account to be read.
+They take about 15 minutes, most of it waiting for the scan.
+
+There are three ways to run it:
+
+  OPTION A  CloudFormation stack from AWS CloudShell (RECOMMENDED). The scan runs inside your account
+            and uploads the zip to S3. You can close CloudShell while it runs.
+  OPTION B  Run the script directly in AWS CloudShell, then download the zip and send it to us.
+  OPTION C  Run the script on your own computer, then send us the zip.
+
+AWS CloudShell is a terminal inside the AWS Console that already has Python, git and the AWS CLI, and is
+already signed in as you. Nothing needs to be installed on your computer.
+
+
+OPTION A: CLOUDFORMATION STACK FROM AWS CLOUDSHELL (RECOMMENDED)
+----------------------------------------------------------------
+You need: permission to create IAM roles, CodeBuild projects, Step Functions state machines and
+CloudWatch log groups through CloudFormation (for example AdministratorAccess), and the S3 location to
+upload the zip to (we will give you one, or use a bucket of your own).
+
+Step 1. Open CloudShell
+  - In the AWS Console, set the Region selector at the top right to the Region we asked you to scan
+    (for example "Asia Pacific (Sydney)"). The stack is created in that Region and scans it.
+  - Click the CloudShell icon (a small box with >_ in it) in the top bar, or type CloudShell in the
+    console search box and open it.
+  - Wait until a terminal prompt appears, for example:  [cloudshell-user@ip-10-0-0-1 ~]$
+  - If CloudShell is not offered in that Region, open it in a nearby Region and, before Step 4, type
+        export AWS_REGION=REGION-TO-SCAN        (for example  export AWS_REGION=ap-south-2)
+  - If CloudShell will not open because of permissions, ask your AWS administrator to allow
+    CloudShell for your sign-in (AWS managed policy AWSCloudShellFullAccess).
+
+Step 2. Get the files
+  Type these two commands, pressing Enter after each:
+
+      git clone REPOSITORY_URL six-pillars-inventory
+      cd six-pillars-inventory
+
+  (If we sent you a zip instead: click "Actions", then "Upload file", choose the zip, then type
+   unzip 6pillars-inventory-script-noroles-nocost.zip  and  cd 6pillars-inventory-script-noroles-nocost )
+
+Step 3. Say where to upload the zip
+  Type, with the S3 location we gave you:
+
+      export S3_UPLOAD_URL=s3://example-bucket/six-pillars-inventory
+
+Step 4. Deploy the stack and start the scan
+  Type:
+
+      ./deploy.sh
+
+  - It shows the account, the identity, the Region, the upload location and the IAM role
+    (six-pillar-diagram-role), then asks:
+        Deploy the stack and start the scan? [y/N]
+    If the account or Region is wrong, type  n  and start again from Step 1.
+  - Type  y  and press Enter. Creating the stack takes about 1 to 2 minutes. Then it prints
+        Scan started. It usually takes 5-10 minutes.
+
+  You can now close CloudShell if you like: the scan keeps running in your account.
+
+Step 5. Check whether it has finished
+  Type:
+
+      ./status.sh
+
+  - While it runs, it shows RUNNING, how long it has been running and the latest progress lines.
+    Run it again in a minute or two, or type  ./status.sh --watch  to have it check every 30 seconds
+    until the scan finishes.
+  - If you closed CloudShell, open it again in the same Region and type  cd six-pillars-inventory
+    before  ./status.sh
+  - When the scan has finished, it shows SUCCEEDED and where the zip was uploaded, for example:
+
+        INVENTORY_S3_URI=s3://example-bucket/six-pillars-inventory/AWS-inventory-111122223333-ap-southeast-2-20261028T094112123456Z.zip
+
+Step 6. Delete the stack
+  When the scan has finished, ./status.sh asks:
+
+      Delete the stack now? The inventory zip stays in S3. [y/N]
+
+  Type  y  to remove everything the stack created. To do it later, type  ./destroy.sh
+  If six-pillar-diagram-role existed before you started, it is kept; only the permissions the stack
+  added to it are removed.
+
+Step 7. Tell us it has finished
+  If you used the S3 location we gave you, there is nothing to send: tell us the scan has finished. If
+  you used your own bucket, download the zip from the S3 console and send it to us through a secure
+  channel (not a public link). See SAMPLE-DATA.txt for what is in it.
+
+Optional settings for Option A (type these before ./deploy.sh)
+  export ROLE_NAME=another-role-name      use a different IAM role name (default six-pillar-diagram-role)
+  export STACK_NAME=another-stack-name    use a different stack name (default six-pillars-inventory)
+  ./deploy.sh -y                          do not ask to confirm
+
+
+OPTION B: RUN THE SCRIPT DIRECTLY IN AWS CLOUDSHELL
+---------------------------------------------------
+Step 1. Open CloudShell, as in Option A Step 1. If CloudShell is not offered in the Region to scan, open
+  it in a nearby Region and give the Region to scan in Step 4 with --region (for example
+  python3 collect_inventory.py --region ap-south-2).
+
+Step 2. Get the files, as in Option A Step 2.
+
+Step 3. Check the account
+  Type:
+
+      aws sts get-caller-identity
+
+  The "Account" number shown must be the account you want us to document. If it is not, sign in to
+  the right account in the Console and start again from Step 1.
+
+Step 4. Run the script
+  Type:
+
+      python3 collect_inventory.py
+
+  - It shows the account, the identity and the Region, then asks:
+        Collect the inventory of this account and Region? [y/N]
+    If the Region is not the one to scan, type  n  and run it again with  --region REGION
+  - Type  y  and press Enter.
+  - It prints its progress. It usually takes 5 to 10 minutes. CloudShell closes after 20 to 30 minutes
+    without typing or clicking in it, even while the script is running, so click inside the CloudShell
+    window (or press Shift) every few minutes until it finishes, and do not let your computer sleep.
+
+Step 5. Download the zip
+  When it finishes, the last line starts with  RETURN_THIS_ZIP=  followed by the zip's full path,
+  for example:
+
+      RETURN_THIS_ZIP=/home/cloudshell-user/six-pillars-inventory/outputs/111122223333/AWS-inventory-111122223333-ap-southeast-2-20261028T094112123456Z.zip
+
+  - Select and copy the path (everything after the = sign).
+  - Click "Actions", then "Download file".
+  - Paste the path and click "Download". The zip is saved to your computer's Downloads folder.
+
+Step 6. Send us the zip
+  Send the downloaded zip to us through a secure channel (not a public link). If you want to check
+  what is in it first, unzip it on your computer and open snapshot.json in any text editor. See
+  SAMPLE-DATA.txt.
+
+
+TIDY UP CLOUDSHELL (OPTIONAL, OPTIONS A AND B)
+----------------------------------------------
+  For Option A, delete the stack first (./destroy.sh). Then, to remove the files from CloudShell, type:
+
+      cd ~
+      rm -rf six-pillars-inventory
+
+
+OPTION C: YOUR OWN COMPUTER
+---------------------------
+  1. Install Python 3.9 or later (python.org) and AWS CLI version 2
+     (https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html).
+  2. Sign the AWS CLI in to the same account, in a terminal. Use whichever your organisation uses:
+       aws login                 (signs the CLI in with your Console sign-in, through your browser)
+       aws configure sso         (IAM Identity Center / single sign-on), then  aws sso login
+  3. Check the account:  aws sts get-caller-identity
+  4. Get the files (git clone REPOSITORY_URL, or unzip the zip we sent), open a terminal in that folder
+     and run:
+       python collect_inventory.py --region REGION     (Windows)
+       python3 collect_inventory.py --region REGION    (macOS and Linux)
+     If you signed in with a named profile, add  --profile YOUR_PROFILE
+  5. Type  y  to confirm the account. When it finishes, send us the zip shown after RETURN_THIS_ZIP=
+
+  (The Option A commands also work from your own computer on macOS or Linux, if the AWS CLI is signed
+   in: export AWS_REGION=REGION and S3_UPLOAD_URL, then ./deploy.sh)
+
+
+IF SOMETHING GOES WRONG
+-----------------------
+Option A
+  - "Set the upload location first": do Step 3, then run ./deploy.sh again.
+  - "Role six-pillar-diagram-role exists but CodeBuild cannot use it": a role with that name already
+    exists and was made for something else. Choose another name with  export ROLE_NAME=another-name
+    and run ./deploy.sh again, or ask your administrator to allow codebuild.amazonaws.com to use the role.
+  - "Deploy failed": the reasons are printed underneath. Usually your sign-in is not allowed to create
+    IAM roles or CodeBuild projects; ask your administrator, then run ./deploy.sh again.
+  - "A scan is already running": wait for it with ./status.sh --watch.
+  - ./status.sh shows FAILED: it prints the error and the last lines of the scan's log. If the log ends
+    with an S3 "AccessDenied" error, the role is not allowed to upload to that bucket: check the S3
+    location with us. Then run ./deploy.sh again, or delete everything with ./destroy.sh. Send us the
+    message if you are not sure.
+  - "Stack ... is not deployed in this Region": open CloudShell in the Region where you ran ./deploy.sh
+    (or  export AWS_REGION=THAT-REGION ) and try again.
+  - "Permission denied" when running ./deploy.sh: type  bash deploy.sh  (and  bash status.sh ,
+    bash destroy.sh ) instead.
+
+Options B and C
+  - "Unable to locate credentials" or "expired token": sign in again (in CloudShell, close it and
+    open it again), then run the script again.
+  - "Inventory failed: ...": send us the message shown. Nothing in your account has been changed.
+  - CloudShell closed or the session ended before the script finished: open CloudShell again, then
+    cd six-pillars-inventory and run Option B Step 4 again. Click in the window every few minutes
+    while it runs.
+
+All options
+  - The scan finishes but reports failed calls: that is fine. They are listed in scan-errors.json,
+    which is in the zip, so we can see what could not be read. Usually a permission is missing (see
+    iam-policy.json).
+  - Calls time out: the Region may not be enabled in the account (some Regions are opt-in).
+    Check under Account settings > AWS Regions in the Console.

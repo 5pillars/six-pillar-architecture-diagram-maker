@@ -1,0 +1,101 @@
+6PILLARS.AI INVENTORY SCRIPT: SAMPLE OF THE DATA IN THE INVENTORY
+=================================================================
+
+These are made-up examples of what the inventory (snapshot.json) holds. Your file has the same kind of
+entries for the resources in your account. You can open snapshot.json in any text editor and check it
+before sending it to us.
+
+
+1. ACCOUNT AND RUN
+------------------
+  "identity": {
+    "Account": "111122223333",
+    "Arn": "arn:aws:iam::111122223333:user/jane.doe"
+  },
+  "regions": ["ap-southeast-2"],
+  "completed": "2026-10-28T09:41:12+00:00"
+
+Shows which account was read, who ran the script, and when.
+
+
+2. RESOURCES
+------------
+A server:
+  { "id": "i-0abc123def4567890", "name": "web-server-1", "state": "running", "type": "t3.medium",
+    "vpc": "vpc-0a1b2c3d", "subnet": "subnet-0e5f6a7b", "groups": ["sg-01234567"],
+    "volumes": ["vol-0123456789abcdef0"], "ip": "203.0.113.25" }
+
+A database:
+  { "id": "orders-db", "state": "available", "type": "db.t4g.medium", "engine": "postgres",
+    "az": "ap-southeast-2a", "vpc": "vpc-0a1b2c3d", "subnets": ["subnet-0e5f6a7b", "subnet-0c9d8e7f"] }
+
+A Lambda function (settings only; no code and no environment variables):
+  { "id": "arn:aws:lambda:ap-southeast-2:111122223333:function:process-order", "name": "process-order",
+    "runtime": "python3.12", "memory": 512, "timeout": 30, "vpc": "vpc-0a1b2c3d" }
+
+A network:
+  { "id": "vpc-0a1b2c3d", "name": "main-vpc", "cidr": "10.20.0.0/16", "default": false }
+  { "id": "subnet-0e5f6a7b", "name": "private-a", "az": "ap-southeast-2a", "cidr": "10.20.1.0/24",
+    "publicIP": false }
+
+A security group (open ports and how many address ranges each one allows; not the addresses themselves):
+  { "id": "sg-01234567", "name": "web-sg", "ingress": [ { "from": 443, "to": 443, "protocol": "tcp",
+    "sourceCount": 1 } ] }
+
+A secret (name only; the value is never read):
+  { "id": "arn:aws:secretsmanager:ap-southeast-2:111122223333:secret:orders-db-credentials-AbCdEf",
+    "name": "orders-db-credentials" }
+
+A storage bucket (name and Region only; the files in it are never read):
+  { "id": "acme-orders-uploads", "name": "acme-orders-uploads", "region": "ap-southeast-2" }
+
+A log group (name, size and how long logs are kept; the log entries are never read):
+  { "id": "/aws/lambda/process-order", "bytes": 52428800, "retention": 30 }
+
+
+3. CONNECTIONS BETWEEN RESOURCES
+--------------------------------
+  { "source": "orders-api", "label": "invokes Lambda", "targets": ["...function:process-order"],
+    "evidence": "API integration POST /orders" }
+  { "source": "...rule/nightly-report", "label": "target: cron(0 2 * * ? *)",
+    "targets": ["...stateMachine:report-workflow"] }
+  { "source": "...topic/order-events", "label": "subscription (sqs)", "targets": ["...:order-queue"] }
+
+Which resource calls or sends to which. E-mail addresses, phone numbers and web addresses subscribed to
+notification topics are NOT recorded; they are only counted.
+
+
+4. TAGS
+-------
+  { "arn": "...function:process-order", "tags": [ { "Key": "Project", "Value": "orders" },
+                                                  { "Key": "Environment", "Value": "prod" } ] }
+
+Only the Name, Project, Application and Environment tags are kept.
+
+
+IS ANY OF THIS SENSITIVE?
+=========================
+
+NOT IN THE FILE
+  No passwords, keys, tokens or secret values. No application code. No customer or business data: nothing
+  from inside databases, buckets, queues, logs or file systems. No billing, budget or price data. No
+  personal contact details from notification subscriptions. No IAM roles or permission policies.
+
+LOW SENSITIVITY
+  Resource IDs, types, sizes, states, runtimes and AWS Region and zone names. On their own they don't give
+  anyone access to anything: every AWS request still needs valid credentials for your account.
+
+WORTH TREATING AS CONFIDENTIAL
+  The file describes how your system is built, which is useful to an attacker planning an attack even
+  though it gives no access. In particular:
+    - Your AWS account ID, and the name of the person or role that ran the script.
+    - Names you chose for resources, secrets, buckets and tags, which may reveal project, product or
+      customer names.
+    - Network layout: private IP ranges, public IP addresses, and which ports are open.
+    - Domain names of Route 53 hosted zones, CloudFront distributions and SES sending identities (SES
+      identities can include e-mail addresses).
+
+  We treat the file as confidential, use it only to document your architecture, and share it with no
+  one else. Please send it through a secure channel (not a public link), and delete your local copy
+  when it is no longer needed. If a name or value must not leave your organisation, tell us and remove
+  or replace it in snapshot.json before sending; the rest of the inventory is still usable.
