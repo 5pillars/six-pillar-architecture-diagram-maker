@@ -90,8 +90,6 @@ Other options (./deploy.sh --help lists them all)
                       ./destroy.sh
   --bucket BUCKET     S3 bucket name for the zip (required)
   --prefix FOLDER     folder in the bucket for the zip (required)
-  --ssm-name NAME     Parameter Store name that holds the folder (default
-                      /six-pillars-inventory/inventory-prefix)
   --role NAME         IAM role name (default six-pillar-diagram-role)
   --stack NAME        stack name (default six-pillars-inventory); give the same --stack to
                       ./status.sh and ./destroy.sh
@@ -176,8 +174,6 @@ IF SOMETHING GOES WRONG
 Option A
   - "Give the Region to scan", "Give the S3 bucket for the zip" or "Give the folder in the bucket":
     ./deploy.sh needs all three:  --region REGION --bucket BUCKET --prefix FOLDER  (step 3).
-  - "Not a Parameter Store name": the --ssm-name must start with / , for example
-    /six-pillars-inventory/inventory-prefix
   - "Give only the bucket name in --bucket": put the folder in  --prefix FOLDER  instead, for
     example  --bucket example-bucket --prefix FOLDER
   - "Not an AWS Region name" or "Not an S3 bucket name": check the --region and --bucket values for

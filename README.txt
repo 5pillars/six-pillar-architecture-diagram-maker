@@ -75,7 +75,7 @@ Option A, in AWS CloudShell (pick the Region to scan in the Console first):
                                      waits until it finishes, then offers to delete the stack
 
 That's it. ./destroy.sh --region ap-southeast-2 deletes the stack later if you didn't then. HOW-TO-RUN.txt has the details and
-the other options (--ssm-name, --role, --stack).
+the other options (--role, --stack).
 
 Option B, in a terminal in this folder:
 

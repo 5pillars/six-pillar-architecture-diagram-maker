@@ -9,8 +9,7 @@
      },
      "Parameters": [
       "InventoryBucket",
-      "InventoryPrefix",
-      "PrefixSsmParameterName"
+      "InventoryPrefix"
      ]
     },
     {
@@ -40,14 +39,6 @@
    "ConstraintDescription": "letters, digits and !_.*'()- separated by single slashes, with no leading or trailing slash",
    "Description": "Folder in the bucket for the zip (required), for example six-pillars-inventory. No leading or trailing slash.",
    "MinLength": 1
-  },
-  "PrefixSsmParameterName": {
-   "Type": "String",
-   "Default": "/six-pillars-inventory/inventory-prefix",
-   "AllowedPattern": "^/[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*$",
-   "ConstraintDescription": "must start with / and use letters, digits and _.- separated by single slashes",
-   "Description": "Name of the Parameter Store parameter the stack creates. Its value is the InventoryPrefix. Must start with /",
-   "MaxLength": 1011
   },
   "RoleName": {
    "Type": "String",
@@ -82,9 +73,7 @@
    "Type": "AWS::SSM::Parameter",
    "Properties": {
     "Description": "Folder in the inventory bucket that the scan uploads the zip to",
-    "Name": {
-     "Ref": "PrefixSsmParameterName"
-    },
+    "Name": "/six-pillars-inventory/inventory-prefix",
     "Type": "String",
     "Value": {
      "Ref": "InventoryPrefix"

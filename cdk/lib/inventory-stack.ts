@@ -12,6 +12,7 @@ const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 const BUILD_IMAGE = 'aws/codebuild/amazonlinux-x86_64-standard:5.0';   // has Python 3 and AWS CLI v2
 const MAX_BUILDSPEC = 25600;                                             // CodeBuild's limit for an inline buildspec
 const MAX_INLINE_CODE = 4096;                                             // CloudFormation's limit for inline Lambda code
+const PREFIX_SSM_NAME = '/six-pillars-inventory/inventory-prefix';        // Parameter Store name that holds the prefix
 
 /**
  * One CodeBuild project runs collect_inventory.py unchanged and uploads the zip to S3. A one-step
@@ -37,14 +38,6 @@ export class InventoryStack extends Stack {
       allowedPattern: "^[A-Za-z0-9!_.*'()-]+(/[A-Za-z0-9!_.*'()-]+)*$",
       minLength: 1,
       constraintDescription: 'letters, digits and !_.*\'()- separated by single slashes, with no leading or trailing slash',
-    });
-    const prefixParamName = new CfnParameter(this, 'PrefixSsmParameterName', {
-      type: 'String',
-      default: '/six-pillars-inventory/inventory-prefix',
-      description: 'Name of the Parameter Store parameter the stack creates. Its value is the InventoryPrefix. Must start with /',
-      allowedPattern: '^/[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*$',
-      maxLength: 1011,
-      constraintDescription: 'must start with / and use letters, digits and _.- separated by single slashes',
     });
     const roleName = new CfnParameter(this, 'RoleName', {
       type: 'String',
@@ -73,7 +66,7 @@ export class InventoryStack extends Stack {
     this.templateOptions.metadata = {
       'AWS::CloudFormation::Interface': {
         ParameterGroups: [
-          { Label: { default: 'Where to upload the inventory' }, Parameters: ['InventoryBucket', 'InventoryPrefix', 'PrefixSsmParameterName'] },
+          { Label: { default: 'Where to upload the inventory' }, Parameters: ['InventoryBucket', 'InventoryPrefix'] },
           { Label: { default: 'Scan settings' }, Parameters: ['RoleName', 'CreateRole', 'ScanTimeoutMinutes', 'RunId'] },
         ],
       },
@@ -83,7 +76,7 @@ export class InventoryStack extends Stack {
 
     // The prefix is also kept in Parameter Store, so other tools can find where the zip goes.
     const prefixParam = new ssm.CfnParameter(this, 'PrefixParameter', {
-      name: prefixParamName.valueAsString,
+      name: PREFIX_SSM_NAME,
       type: 'String',
       value: prefix.valueAsString,
       description: 'Folder in the inventory bucket that the scan uploads the zip to',
