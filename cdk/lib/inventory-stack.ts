@@ -4,7 +4,7 @@ import * as path from 'path';
 import {
   Aws, CfnCondition, CfnOutput, CfnParameter, Fn, Stack, StackProps,
   CfnCustomResource, aws_codebuild as codebuild, aws_iam as iam, aws_lambda as lambda, aws_logs as logs,
-  aws_stepfunctions as sfn,
+  aws_ssm as ssm, aws_stepfunctions as sfn,
 } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 
@@ -38,6 +38,14 @@ export class InventoryStack extends Stack {
       minLength: 1,
       constraintDescription: 'letters, digits and !_.*\'()- separated by single slashes, with no leading or trailing slash',
     });
+    const prefixParamName = new CfnParameter(this, 'PrefixSsmParameterName', {
+      type: 'String',
+      default: '/six-pillars-inventory/inventory-prefix',
+      description: 'Name of the Parameter Store parameter the stack creates. Its value is the InventoryPrefix. Must start with /',
+      allowedPattern: '^/[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*$',
+      maxLength: 1011,
+      constraintDescription: 'must start with / and use letters, digits and _.- separated by single slashes',
+    });
     const roleName = new CfnParameter(this, 'RoleName', {
       type: 'String',
       default: 'six-pillar-diagram-role',
@@ -65,13 +73,21 @@ export class InventoryStack extends Stack {
     this.templateOptions.metadata = {
       'AWS::CloudFormation::Interface': {
         ParameterGroups: [
-          { Label: { default: 'Where to upload the inventory' }, Parameters: ['InventoryBucket', 'InventoryPrefix'] },
+          { Label: { default: 'Where to upload the inventory' }, Parameters: ['InventoryBucket', 'InventoryPrefix', 'PrefixSsmParameterName'] },
           { Label: { default: 'Scan settings' }, Parameters: ['RoleName', 'CreateRole', 'ScanTimeoutMinutes', 'RunId'] },
         ],
       },
     };
 
     const keyStart = `${prefix.valueAsString}/`;
+
+    // The prefix is also kept in Parameter Store, so other tools can find where the zip goes.
+    const prefixParam = new ssm.CfnParameter(this, 'PrefixParameter', {
+      name: prefixParamName.valueAsString,
+      type: 'String',
+      value: prefix.valueAsString,
+      description: 'Folder in the inventory bucket that the scan uploads the zip to',
+    });
 
     const shouldCreateRole = new CfnCondition(this, 'ShouldCreateRole', {
       expression: Fn.conditionEquals(createRole.valueAsString, 'true'),
@@ -281,6 +297,10 @@ export class InventoryStack extends Stack {
     new CfnOutput(this, 'LogGroupName', { value: logGroup.ref });
     new CfnOutput(this, 'InventoryLocation', {
       value: Fn.join('', ['s3://', bucket.valueAsString, '/', keyStart]),
+    });
+    new CfnOutput(this, 'PrefixParameterName', {
+      description: 'Parameter Store parameter that holds the prefix',
+      value: prefixParam.ref,
     });
     new CfnOutput(this, 'ScanRoleName', { value: roleName.valueAsString });
   }

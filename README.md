@@ -52,14 +52,15 @@ is still running, so you can use it in scripts.
 
 ### Options
 
-`deploy.sh` needs `--region`, `--bucket` and `--prefix`. The bucket and folder can come from their
-environment variables instead; the Region must be given as an argument.
+`deploy.sh` needs `--region`, `--bucket` and `--prefix`; none has a default. The bucket and folder can
+come from their environment variables instead; the Region must be given as an argument.
 
 | Option            | Environment variable | Used by   | Default                   | Meaning                                       |
 |-------------------|----------------------|-----------|---------------------------|-----------------------------------------------|
 | `--region REGION` |                      | all three | (required for deploy)     | Region to deploy into and scan                |
 | `--bucket BUCKET` | `S3_UPLOAD_URL`      | deploy    | (required, no default)    | Bucket name only                              |
 | `--prefix FOLDER` | `INVENTORY_PREFIX`   | deploy    | (required, no default)    | Folder in the bucket                          |
+| `--ssm-name NAME` | `SSM_PARAMETER_NAME` | deploy    | `/six-pillars-inventory/inventory-prefix` | Parameter Store name; its value is the prefix |
 | `--role NAME`     | `ROLE_NAME`          | deploy    | `six-pillar-diagram-role` | IAM role the scan runs as                     |
 | `--stack NAME`    | `STACK_NAME`         | all three | `six-pillars-inventory`   | CloudFormation stack name                     |
 | `--watch`         |                      | status    |                           | Check every 30 seconds until the scan is done |
@@ -78,6 +79,7 @@ These resources are all removed by `./destroy.sh`:
 | Role for the state machine         | Lets it start and watch that one CodeBuild project                          |
 | Starter Lambda function and role   | Starts the scan when the stack is created; stops a running scan when the stack is deleted |
 | CloudWatch log group               | Scan and starter output, kept 14 days                                       |
+| SSM parameter `/six-pillars-inventory/inventory-prefix` | Its value is the prefix (folder) the zip is uploaded to, for other tools to read. The name can be changed with `--ssm-name` |
 
 The starter Lambda runs for a second or two; the scan itself runs in CodeBuild, so there's no Lambda
 15-minute limit. There's no Docker image, VPC or CDK bootstrap. The script runs in CodeBuild's standard
@@ -86,13 +88,14 @@ Amazon Linux image, which already has Python 3 and AWS CLI v2. The script is emb
 single self-contained file.
 
 **Deploying from the CloudFormation console or CLI.** The scan starts by itself as soon as the stack is
-created: give the template the bucket name (`InventoryBucket`) and folder (`InventoryPrefix`), both required, and
-that's all. Create the stack in the Region to scan. To run it again, update the
+created: give the template the bucket name (`InventoryBucket`) and folder (`InventoryPrefix`), both required, with no
+defaults. The folder is saved in Parameter Store as `PrefixSsmParameterName` (default
+`/six-pillars-inventory/inventory-prefix`). Create the stack in the Region to scan. To run it again, update the
 stack with a new value for `RunId` (`deploy.sh` does this for you). Deleting the stack stops a scan that's
 still running.
 
 **Permissions to deploy.** The person deploying needs to be able to create IAM roles and policies, CodeBuild
-projects, Step Functions state machines, Lambda functions and CloudWatch log groups through CloudFormation
+projects, Step Functions state machines, Lambda functions, CloudWatch log groups and SSM parameters through CloudFormation
 (for example `AdministratorAccess`).
 
 **Existing role.** If `six-pillar-diagram-role` already exists, `deploy.sh` uses it instead of creating

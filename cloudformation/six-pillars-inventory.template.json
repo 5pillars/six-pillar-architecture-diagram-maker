@@ -9,7 +9,8 @@
      },
      "Parameters": [
       "InventoryBucket",
-      "InventoryPrefix"
+      "InventoryPrefix",
+      "PrefixSsmParameterName"
      ]
     },
     {
@@ -40,6 +41,14 @@
    "Description": "Folder in the bucket for the zip (required), for example six-pillars-inventory. No leading or trailing slash.",
    "MinLength": 1
   },
+  "PrefixSsmParameterName": {
+   "Type": "String",
+   "Default": "/six-pillars-inventory/inventory-prefix",
+   "AllowedPattern": "^/[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*$",
+   "ConstraintDescription": "must start with / and use letters, digits and _.- separated by single slashes",
+   "Description": "Name of the Parameter Store parameter the stack creates. Its value is the InventoryPrefix. Must start with /",
+   "MaxLength": 1011
+  },
   "RoleName": {
    "Type": "String",
    "Default": "six-pillar-diagram-role",
@@ -68,17 +77,20 @@
    "Description": "The scan starts when the stack is created. To run it again, update the stack with a new value here"
   }
  },
- "Conditions": {
-  "ShouldCreateRole": {
-   "Fn::Equals": [
-    {
-     "Ref": "CreateRole"
-    },
-    "true"
-   ]
-  }
- },
  "Resources": {
+  "PrefixParameter": {
+   "Type": "AWS::SSM::Parameter",
+   "Properties": {
+    "Description": "Folder in the inventory bucket that the scan uploads the zip to",
+    "Name": {
+     "Ref": "PrefixSsmParameterName"
+    },
+    "Type": "String",
+    "Value": {
+     "Ref": "InventoryPrefix"
+    }
+   }
+  },
   "ScanLogs": {
    "Type": "AWS::Logs::LogGroup",
    "Properties": {
@@ -599,6 +611,16 @@
    ]
   }
  },
+ "Conditions": {
+  "ShouldCreateRole": {
+   "Fn::Equals": [
+    {
+     "Ref": "CreateRole"
+    },
+    "true"
+   ]
+  }
+ },
  "Outputs": {
   "StateMachineArn": {
    "Value": {
@@ -643,6 +665,12 @@
       "/"
      ]
     ]
+   }
+  },
+  "PrefixParameterName": {
+   "Description": "Parameter Store parameter that holds the prefix",
+   "Value": {
+    "Ref": "PrefixParameter"
    }
   },
   "ScanRoleName": {

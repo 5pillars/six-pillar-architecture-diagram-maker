@@ -8,11 +8,13 @@
 #   export S3_UPLOAD_URL=my-bucket INVENTORY_PREFIX=FOLDER
 #   ./deploy.sh --region ap-southeast-2
 #
-# Required (--bucket and --prefix can also come from the environment variables shown):
+# Required (all but --region can also come from the environment variables shown):
 #   --region REGION   Region to deploy into and scan
 #   --bucket BUCKET   S3 bucket name for the zip (S3_UPLOAD_URL)
 #   --prefix FOLDER   Folder in the bucket for the zip (INVENTORY_PREFIX)
 # Optional:
+#   --ssm-name NAME   Parameter Store name that holds the prefix as its value (SSM_PARAMETER_NAME;
+#                     default /six-pillars-inventory/inventory-prefix)
 #   --role NAME       IAM role the scan runs as (ROLE_NAME; default six-pillar-diagram-role)
 #   --stack NAME      CloudFormation stack name (STACK_NAME; default six-pillars-inventory)
 #   -y, --yes         Do not ask to confirm
@@ -20,13 +22,14 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 die() { echo "ERROR: $*" >&2; exit 1; }
-usage() { sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 STACK_NAME="${STACK_NAME:-six-pillars-inventory}"
 ROLE_NAME="${ROLE_NAME:-six-pillar-diagram-role}"
 REGION=""
 URL="${S3_UPLOAD_URL:-}"
 PREFIX="${INVENTORY_PREFIX:-}"
+SSM_NAME="${SSM_PARAMETER_NAME:-/six-pillars-inventory/inventory-prefix}"
 ASSUME_YES=false
 TEMPLATE="cloudformation/six-pillars-inventory.template.json"
 
@@ -35,11 +38,13 @@ while [ $# -gt 0 ]; do
     --region)  [ $# -ge 2 ] || die "--region needs a value"; REGION="$2"; shift 2 ;;
     --bucket)  [ $# -ge 2 ] || die "--bucket needs a value"; URL="$2"; shift 2 ;;
     --prefix)  [ $# -ge 2 ] || die "--prefix needs a value"; PREFIX="$2"; shift 2 ;;
+    --ssm-name) [ $# -ge 2 ] || die "--ssm-name needs a value"; SSM_NAME="$2"; shift 2 ;;
     --role)    [ $# -ge 2 ] || die "--role needs a value"; ROLE_NAME="$2"; shift 2 ;;
     --stack)   [ $# -ge 2 ] || die "--stack needs a value"; STACK_NAME="$2"; shift 2 ;;
     --region=*) REGION="${1#*=}"; shift ;;
     --bucket=*) URL="${1#*=}"; shift ;;
     --prefix=*) PREFIX="${1#*=}"; shift ;;
+    --ssm-name=*) SSM_NAME="${1#*=}"; shift ;;
     --role=*)   ROLE_NAME="${1#*=}"; shift ;;
     --stack=*)  STACK_NAME="${1#*=}"; shift ;;
     -y|--yes)  ASSUME_YES=true; shift ;;
@@ -67,6 +72,7 @@ while [[ "$PREFIX" == */ ]]; do PREFIX="${PREFIX%/}"; done
 [ -n "$PREFIX" ] || die "Give the folder in the bucket for the zip, for example: --prefix six-pillars-inventory"
 [[ "$PREFIX" =~ ^[A-Za-z0-9!_.*\'\(\)-]+(/[A-Za-z0-9!_.*\'\(\)-]+)*$ ]] || die "Not a valid folder name: '$PREFIX' (letters, digits and !_.*'()- separated by single slashes)"
 [[ "$BUCKET" =~ ^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$ ]] || die "Not an S3 bucket name: '$BUCKET'"
+[[ "$SSM_NAME" =~ ^/[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*$ ]] || die "Not a Parameter Store name: '$SSM_NAME' (it must start with /, for example /six-pillars-inventory/inventory-prefix)"
 
 # ---- who and where
 IDENTITY=$(aws sts get-caller-identity --query '[Account,Arn]' --output text) || die "Not signed in to AWS."
@@ -118,6 +124,7 @@ echo "  Account:    $ACCOUNT"
 echo "  Signed in:  $CALLER"
 echo "  Region:     $REGION"
 echo "  Upload to:  s3://$BUCKET/$PREFIX/"
+echo "  Prefix in:  Parameter Store $SSM_NAME"
 echo "  Role:       $ROLE_NAME ($([ "$CREATE_ROLE" = true ] && echo 'created by the stack' || echo 'existing role'))"
 echo "  Stack:      $STACK_NAME"
 if ! $ASSUME_YES; then
@@ -141,7 +148,7 @@ if ! aws cloudformation deploy \
     --stack-name "$STACK_NAME" \
     --template-file "$TEMPLATE" \
     --capabilities CAPABILITY_NAMED_IAM \
-    --parameter-overrides "InventoryBucket=$BUCKET" "InventoryPrefix=$PREFIX" \
+    --parameter-overrides "InventoryBucket=$BUCKET" "InventoryPrefix=$PREFIX" "PrefixSsmParameterName=$SSM_NAME" \
                           "RoleName=$ROLE_NAME" "CreateRole=$CREATE_ROLE" "RunId=$RUN_ID"; then
   echo "Deploy failed. Reasons:" >&2
   aws cloudformation describe-stack-events --stack-name "$STACK_NAME" \
@@ -155,5 +162,6 @@ EXECUTION=$(output StartedExecutionArn)
 echo
 echo "Scan started. It usually takes 5-10 minutes."
 echo "  Execution: $EXECUTION"
+echo "  Prefix:    $PREFIX (saved in Parameter Store as $SSM_NAME)"
 echo
 echo "Check on it with:   ./status.sh$ARGS          (or ./status.sh$ARGS --watch to wait until it finishes)"
