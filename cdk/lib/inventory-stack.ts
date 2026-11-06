@@ -4,7 +4,7 @@ import * as path from 'path';
 import {
   Aws, CfnCondition, CfnOutput, CfnParameter, Fn, Stack, StackProps,
   CfnCustomResource, aws_codebuild as codebuild, aws_iam as iam, aws_lambda as lambda, aws_logs as logs,
-  aws_ssm as ssm, aws_stepfunctions as sfn,
+  aws_stepfunctions as sfn,
 } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 
@@ -12,7 +12,6 @@ const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 const BUILD_IMAGE = 'aws/codebuild/amazonlinux-x86_64-standard:5.0';   // has Python 3 and AWS CLI v2
 const MAX_BUILDSPEC = 25600;                                             // CodeBuild's limit for an inline buildspec
 const MAX_INLINE_CODE = 4096;                                             // CloudFormation's limit for inline Lambda code
-const PREFIX_SSM_NAME = '/six-pillars-inventory/inventory-prefix';        // Parameter Store name that holds the prefix
 
 /**
  * One CodeBuild project runs collect_inventory.py unchanged and uploads the zip to S3. A one-step
@@ -73,14 +72,6 @@ export class InventoryStack extends Stack {
     };
 
     const keyStart = `${prefix.valueAsString}/`;
-
-    // The prefix is also kept in Parameter Store, so other tools can find where the zip goes.
-    const prefixParam = new ssm.CfnParameter(this, 'PrefixParameter', {
-      name: PREFIX_SSM_NAME,
-      type: 'String',
-      value: prefix.valueAsString,
-      description: 'Folder in the inventory bucket that the scan uploads the zip to',
-    });
 
     const shouldCreateRole = new CfnCondition(this, 'ShouldCreateRole', {
       expression: Fn.conditionEquals(createRole.valueAsString, 'true'),
@@ -290,10 +281,6 @@ export class InventoryStack extends Stack {
     new CfnOutput(this, 'LogGroupName', { value: logGroup.ref });
     new CfnOutput(this, 'InventoryLocation', {
       value: Fn.join('', ['s3://', bucket.valueAsString, '/', keyStart]),
-    });
-    new CfnOutput(this, 'PrefixParameterName', {
-      description: 'Parameter Store parameter that holds the prefix',
-      value: prefixParam.ref,
     });
     new CfnOutput(this, 'ScanRoleName', { value: roleName.valueAsString });
   }

@@ -66,9 +66,10 @@ Step 3. Start the scan
     (six-pillar-diagram-role), then asks:  Deploy the stack and start the scan? [y/N]
     If anything is wrong, type  n  and run it again with the right values.
   - After  y , creating the stack takes 1 to 2 minutes, then it prints  Scan started.
+  - If the stack is already there from an earlier run, ./deploy.sh says so, deletes it and creates
+    it again (another 1 to 2 minutes). A scan still running in the old stack is stopped.
   - --region, --bucket and --prefix are all required. Give only the bucket name with --bucket, and
     the folder in the bucket with --prefix; the zip goes to  s3://BUCKET/FOLDER/
-    The folder is also saved in Parameter Store as  /six-pillars-inventory/inventory-prefix
   - You can close CloudShell now if you like: the scan keeps running in your account.
 
 Step 4. Wait for it to finish
@@ -181,9 +182,11 @@ Option A
   - "Role six-pillar-diagram-role exists but CodeBuild cannot use it": a role with that name already
     exists and was made for something else. Choose another name with  --role another-name
     and run ./deploy.sh again, or ask your administrator to allow codebuild.amazonaws.com to use the role.
+  - "Could not delete stack": the old stack could not be removed. Open CloudFormation in the
+    Console, select the stack, look at the Events tab for the reason, fix it (or delete the stack
+    there), then run ./deploy.sh again.
   - "Deploy failed": the reasons are printed underneath. Usually your sign-in is not allowed to create
     IAM roles or CodeBuild projects; ask your administrator, then run ./deploy.sh again.
-  - "A scan is already running": wait for it with ./status.sh --region REGION --watch
   - ./status.sh shows FAILED: it prints the error and the last lines of the scan's log. If the log ends
     with an S3 "AccessDenied" error, the role is not allowed to upload to that bucket: check the S3
     location with us. Then run ./deploy.sh again, or delete everything with ./destroy.sh. Send us the

@@ -68,18 +68,17 @@
    "Description": "The scan starts when the stack is created. To run it again, update the stack with a new value here"
   }
  },
+ "Conditions": {
+  "ShouldCreateRole": {
+   "Fn::Equals": [
+    {
+     "Ref": "CreateRole"
+    },
+    "true"
+   ]
+  }
+ },
  "Resources": {
-  "PrefixParameter": {
-   "Type": "AWS::SSM::Parameter",
-   "Properties": {
-    "Description": "Folder in the inventory bucket that the scan uploads the zip to",
-    "Name": "/six-pillars-inventory/inventory-prefix",
-    "Type": "String",
-    "Value": {
-     "Ref": "InventoryPrefix"
-    }
-   }
-  },
   "ScanLogs": {
    "Type": "AWS::Logs::LogGroup",
    "Properties": {
@@ -600,16 +599,6 @@
    ]
   }
  },
- "Conditions": {
-  "ShouldCreateRole": {
-   "Fn::Equals": [
-    {
-     "Ref": "CreateRole"
-    },
-    "true"
-   ]
-  }
- },
  "Outputs": {
   "StateMachineArn": {
    "Value": {
@@ -654,12 +643,6 @@
       "/"
      ]
     ]
-   }
-  },
-  "PrefixParameterName": {
-   "Description": "Parameter Store parameter that holds the prefix",
-   "Value": {
-    "Ref": "PrefixParameter"
    }
   },
   "ScanRoleName": {

@@ -40,7 +40,7 @@ The zip goes to `s3://BUCKET/FOLDER/`. The stack is created in, and scans, the R
 
 | Command        | What it does                                                                 |
 |----------------|------------------------------------------------------------------------------|
-| `./deploy.sh`  | Shows account, Region, upload location and role; deploys; starts the scan    |
+| `./deploy.sh`  | Shows account, Region, upload location and role; deletes the stack if it already exists; creates it, which starts the scan |
 | `./status.sh`  | RUNNING / SUCCEEDED / FAILED, recent log lines, the zip's S3 URI when done   |
 | `./destroy.sh` | Stops a running scan, if any, and deletes the stack                          |
 
@@ -78,7 +78,6 @@ These resources are all removed by `./destroy.sh`:
 | Role for the state machine         | Lets it start and watch that one CodeBuild project                          |
 | Starter Lambda function and role   | Starts the scan when the stack is created; stops a running scan when the stack is deleted |
 | CloudWatch log group               | Scan and starter output, kept 14 days                                       |
-| SSM parameter `/six-pillars-inventory/inventory-prefix` | Its value is the prefix (folder) the zip is uploaded to, for other tools to read. The name is fixed |
 
 The starter Lambda runs for a second or two; the scan itself runs in CodeBuild, so there's no Lambda
 15-minute limit. There's no Docker image, VPC or CDK bootstrap. The script runs in CodeBuild's standard
@@ -88,12 +87,13 @@ single self-contained file.
 
 **Deploying from the CloudFormation console or CLI.** The scan starts by itself as soon as the stack is
 created: give the template the bucket name (`InventoryBucket`) and folder (`InventoryPrefix`), both required, with no
-defaults. The folder is saved in Parameter Store as `/six-pillars-inventory/inventory-prefix` (a fixed name). Create the stack in the Region to scan. To run it again, update the
-stack with a new value for `RunId` (`deploy.sh` does this for you). Deleting the stack stops a scan that's
+defaults. Create the stack in the Region to scan. To run it again, run
+`deploy.sh` again: it deletes the existing stack and creates a new one. (From the console, delete and
+re-create the stack, or update it with a new value for `RunId`.) Deleting the stack stops a scan that's
 still running.
 
 **Permissions to deploy.** The person deploying needs to be able to create IAM roles and policies, CodeBuild
-projects, Step Functions state machines, Lambda functions, CloudWatch log groups and SSM parameters through CloudFormation
+projects, Step Functions state machines, Lambda functions and CloudWatch log groups through CloudFormation
 (for example `AdministratorAccess`).
 
 **Existing role.** If `six-pillar-diagram-role` already exists, `deploy.sh` uses it instead of creating

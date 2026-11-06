@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Command 1: deploy the inventory stack and start the scan.
+# Command 1: deploy the inventory stack and start the scan. An existing stack is deleted and created again.
 #
 #   ./deploy.sh --region ap-southeast-2 --bucket my-bucket --prefix FOLDER
 #
@@ -27,7 +27,6 @@ ROLE_NAME="${ROLE_NAME:-six-pillar-diagram-role}"
 REGION=""
 URL="${S3_UPLOAD_URL:-}"
 PREFIX="${INVENTORY_PREFIX:-}"
-SSM_NAME=/six-pillars-inventory/inventory-prefix   # fixed; the stack always saves the prefix here
 ASSUME_YES=false
 TEMPLATE="cloudformation/six-pillars-inventory.template.json"
 
@@ -87,31 +86,39 @@ case "$STATUS" in
   *_IN_PROGRESS) die "Stack $STACK_NAME is busy ($STATUS). Wait, then try again." ;;
 esac
 
-# Don't start a second scan while one is running.
-if [ "$STATUS" != NONE ] && [ "$STATUS" != ROLLBACK_COMPLETE ]; then
-  MACHINE=$(output StateMachineArn 2>/dev/null || true)
-  if [ -n "$MACHINE" ] && [ "$MACHINE" != None ]; then
-    RUNNING=$(aws stepfunctions list-executions --state-machine-arn "$MACHINE" --status-filter RUNNING \
-      --query 'length(executions)' --output text 2>/dev/null || echo 0)
-    [ "$RUNNING" = 0 ] || die "A scan is already running. Check it with ./status.sh$ARGS"
+# An existing stack is deleted first and a new one created, so every run starts clean.
+EXISTS=false
+OLD_CREATED_ROLE=""
+RUNNING=0
+if [ "$STATUS" != NONE ]; then
+  EXISTS=true
+  if [ "$STATUS" != ROLLBACK_COMPLETE ]; then
+    MACHINE=$(output StateMachineArn 2>/dev/null || true)
+    if [ -n "$MACHINE" ] && [ "$MACHINE" != None ]; then
+      RUNNING=$(aws stepfunctions list-executions --state-machine-arn "$MACHINE" --status-filter RUNNING \
+        --query 'length(executions)' --output text 2>/dev/null || echo 0)
+    fi
+    # The role the old stack created goes away with it.
+    OLD=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" \
+      --query "Stacks[0].Parameters[?ParameterKey=='CreateRole' || ParameterKey=='RoleName'].[ParameterKey,ParameterValue]" \
+      --output text 2>/dev/null || true)
+    if echo "$OLD" | grep -q $'^CreateRole\ttrue$'; then
+      OLD_CREATED_ROLE=$(echo "$OLD" | sed -n $'s/^RoleName\t//p')
+    fi
   fi
 fi
 
 # ---- the role: reuse six-pillar-diagram-role if it exists, otherwise the stack creates it
-if [ "$STATUS" != NONE ] && [ "$STATUS" != ROLLBACK_COMPLETE ]; then
-  # Keep what the existing stack decided, so an update never deletes a role it created.
-  CREATE_ROLE=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" \
-    --query "Stacks[0].Parameters[?ParameterKey=='CreateRole'].ParameterValue" --output text)
-else
-  if ROLE_ERR=$(aws iam get-role --role-name "$ROLE_NAME" --query 'Role.AssumeRolePolicyDocument' --output json 2>&1); then
-    CREATE_ROLE=false
-    echo "$ROLE_ERR" | grep -q 'codebuild.amazonaws.com' || die "Role $ROLE_NAME exists but CodeBuild cannot use it.
+if [ -n "$OLD_CREATED_ROLE" ] && [ "$OLD_CREATED_ROLE" = "$ROLE_NAME" ]; then
+  CREATE_ROLE=true   # it exists now only because the old stack made it; the new stack makes it again
+elif ROLE_ERR=$(aws iam get-role --role-name "$ROLE_NAME" --query 'Role.AssumeRolePolicyDocument' --output json 2>&1); then
+  CREATE_ROLE=false
+  echo "$ROLE_ERR" | grep -q 'codebuild.amazonaws.com' || die "Role $ROLE_NAME exists but CodeBuild cannot use it.
 Add codebuild.amazonaws.com to its trust policy, or use a different name: --role another-name"
-  elif echo "$ROLE_ERR" | grep -q NoSuchEntity; then
-    CREATE_ROLE=true
-  else
-    die "Could not check role $ROLE_NAME: $ROLE_ERR"
-  fi
+elif echo "$ROLE_ERR" | grep -q NoSuchEntity; then
+  CREATE_ROLE=true
+else
+  die "Could not check role $ROLE_NAME: $ROLE_ERR"
 fi
 
 echo "6pillars.ai inventory scan (read-only; no IAM roles, no cost data)"
@@ -119,23 +126,25 @@ echo "  Account:    $ACCOUNT"
 echo "  Signed in:  $CALLER"
 echo "  Region:     $REGION"
 echo "  Upload to:  s3://$BUCKET/$PREFIX/"
-echo "  Prefix in:  Parameter Store $SSM_NAME"
 echo "  Role:       $ROLE_NAME ($([ "$CREATE_ROLE" = true ] && echo 'created by the stack' || echo 'existing role'))"
 echo "  Stack:      $STACK_NAME"
+if $EXISTS; then
+  echo "  Note:       stack $STACK_NAME already exists ($STATUS). It will be deleted and created again."
+  [ "$RUNNING" = 0 ] || echo "              A scan is running in it now; deleting the stack stops that scan."
+fi
 if ! $ASSUME_YES; then
   read -r -p "Deploy the stack and start the scan? [y/N] " answer
   [[ "$answer" =~ ^[Yy]([Ee][Ss])?$ ]] || { echo "Stopped: nothing was deployed."; exit 0; }
 fi
 
-# A stack whose first create failed must be deleted before it can be created again.
-if [ "$STATUS" = ROLLBACK_COMPLETE ]; then
-  echo "Removing the stack left over from a failed deploy..."
+if $EXISTS; then
+  echo "Deleting the existing stack $STACK_NAME (about 1-2 minutes)..."
   aws cloudformation delete-stack --stack-name "$STACK_NAME"
-  aws cloudformation wait stack-delete-complete --stack-name "$STACK_NAME"
+  aws cloudformation wait stack-delete-complete --stack-name "$STACK_NAME" || die "Could not delete stack $STACK_NAME.
+See the reason in the CloudFormation console (Events tab), fix it, then run ./deploy.sh again."
 fi
 
-# The stack starts the scan itself when it is created, and again whenever RunId changes,
-# so a new RunId on every run is all it takes.
+# The stack starts the scan itself when it is created. RunId just records which run this was.
 RUN_ID="run-$(date -u +%Y%m%dT%H%M%SZ)"
 
 echo "Deploying stack $STACK_NAME and starting the scan (about 1-2 minutes)..."
@@ -157,6 +166,5 @@ EXECUTION=$(output StartedExecutionArn)
 echo
 echo "Scan started. It usually takes 5-10 minutes."
 echo "  Execution: $EXECUTION"
-echo "  Prefix:    $PREFIX (saved in Parameter Store as $SSM_NAME)"
 echo
 echo "Check on it with:   ./status.sh$ARGS          (or ./status.sh$ARGS --watch to wait until it finishes)"

@@ -40,8 +40,6 @@ What the CloudFormation stack (option A) creates
   - A small Lambda function, and its role, that starts the scan as soon as the stack is created (and
     stops it if the stack is deleted while it is still running).
   - A CloudWatch log group with the scan's progress messages (kept 14 days).
-  - A Parameter Store (SSM) parameter, /six-pillars-inventory/inventory-prefix, whose value is the
-    folder the zip is uploaded to.
   The zip stays in the S3 bucket after the stack is deleted.
 
 
@@ -49,8 +47,8 @@ What the CloudFormation stack (option A) creates
 ----------------
 Option A (CloudFormation stack, in AWS CloudShell)
   - Signed in to the AWS Console for the account to be read, with permission to create IAM roles,
-    CodeBuild projects, Step Functions state machines, Lambda functions, CloudWatch log groups and
-    Parameter Store parameters through CloudFormation
+    CodeBuild projects, Step Functions state machines, Lambda functions and CloudWatch log groups
+    through CloudFormation
     (for example the AWS managed policy AdministratorAccess).
   - The name of an S3 bucket to upload the zip to, for example  example-bucket  (we will give you
     one, or you can use a bucket of your own). You also give the folder in the bucket for the zip, for example  six-pillars-inventory.
